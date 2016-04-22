@@ -37,11 +37,13 @@ public class Converter {
     public static <T> T createDatum(Schema schema, InputStream stream) { return new DatumBuilder(schema).createDatum(stream); }
 
     private static class Options {
-        static final String USAGE = "{-d|--debug} {-b|--baseDir <baseDir>} <xsdFile> {<avscFile>}";
+        static final String USAGE = "{-d|--debug} {-b|--baseDir <baseDir>} <xsdFile> <xmlFile> {<avscFile>} {<avroFile>}";
 
         File xsdFile;
-        File avscFile;
+        File xmlFile;
 
+        File avscFile;
+        File avroFile;
 
         boolean debug;
         File baseDir;
@@ -71,11 +73,14 @@ public class Converter {
                     files.add(arg);
             }
 
-            if (files.size() < 1 || files.size() > 2)
-                throw new IllegalArgumentException("Incorrect number of in/out files. Expected [1..2]");
+            if (files.size() < 2 || files.size() > 4)
+                throw new IllegalArgumentException("Incorrect number of in/out files. Expected [2..4]");
 
             xsdFile = replaceBaseDir(files.get(0), baseDir);
-            avscFile = files.size() > 1 ? replaceBaseDir(files.get(1), baseDir) : replaceExtension(xsdFile, "avsc");
+            xmlFile = replaceBaseDir(files.get(1), baseDir);
+
+            avscFile = files.size() > 2 ? replaceBaseDir(files.get(2), baseDir) : replaceExtension(xsdFile, "avsc");
+            avroFile = files.size() > 3 ? replaceBaseDir(files.get(3), baseDir) : replaceExtension(xmlFile, "avro");
         }
 
         private static File replaceExtension(File file, String newExtension) {
@@ -111,12 +116,12 @@ public class Converter {
         try {
             opts = new Options(args);
         } catch (IllegalArgumentException e) {
-            System.out.println("XSD Avsc converter.\nError: " + e.getMessage() + "\n" + "Usage: " + Options.USAGE + "\n");
+            System.out.println("XML Avro converter.\nError: " + e.getMessage() + "\n" + "Usage: " + Options.USAGE + "\n");
             System.exit(1);
             return;
         }
 
-        System.out.println("Converting: \n" + opts.xsdFile + " -> " + opts.avscFile);
+        System.out.println("Converting: \n" + opts.xsdFile + " -> " + opts.avscFile + "\n" + opts.xmlFile + " -> " + opts.avroFile);
 
         SchemaBuilder schemaBuilder = new SchemaBuilder();
         schemaBuilder.setDebug(opts.debug);
@@ -125,6 +130,14 @@ public class Converter {
 
         try (Writer writer = new FileWriter(opts.avscFile)) {
             writer.write(schema.toString(true));
+        }
+
+        DatumBuilder datumBuilder = new DatumBuilder(schema);
+        Object datum = datumBuilder.createDatum(opts.xmlFile);
+
+        try (OutputStream stream = new FileOutputStream(opts.avroFile)) {
+            DatumWriter<Object> datumWriter = new SpecificDatumWriter<>(schema);
+            datumWriter.write(datum, EncoderFactory.get().directBinaryEncoder(stream, null));
         }
     }
 }
